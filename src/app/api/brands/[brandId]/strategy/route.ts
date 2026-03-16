@@ -2,8 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBrandAccess } from "@/lib/utils";
-import { isAIConfigured } from "@/lib/ai";
 import { processStrategyJob } from "@/lib/jobs";
+
+function isAIReady() {
+  const provider = process.env.AI_PROVIDER ?? "openai";
+  const keyMap: Record<string, string | undefined> = {
+    openai: process.env.OPENAI_API_KEY, perplexity: process.env.PERPLEXITY_API_KEY,
+    deepseek: process.env.DEEPSEEK_API_KEY, groq: process.env.GROQ_API_KEY,
+    azure: process.env.AZURE_OPENAI_API_KEY,
+  };
+  const key = keyMap[provider];
+  return !!(key && key.length > 10 && !key.startsWith("sk-..."));
+}
 
 // GET /api/brands/:id/strategy — list strategies
 export async function GET(
@@ -38,7 +48,7 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!isAIConfigured()) {
+  if (!isAIReady()) {
     return NextResponse.json(
       {
         error: "AI provider not configured. 請在 .env 設定 DEEPSEEK_API_KEY。",

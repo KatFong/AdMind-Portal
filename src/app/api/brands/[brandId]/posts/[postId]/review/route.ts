@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireBrandAccess, writeAuditLog } from "@/lib/utils";
-import { chat } from "@/lib/ai";
 import { z } from "zod";
 
 const reviewSchema = z.object({
@@ -82,9 +81,10 @@ export async function POST(
       metadata: { postId, reason: comments },
     });
 
-    // AI regenerates a revision based on feedback
+    // AI regenerates a revision based on feedback (lazy import to reduce cold start)
     if (comments) {
       try {
+        const { chat } = await import("@/lib/ai");
         const revisionPrompt = `以下社交媒體貼文被退回，附有修改意見，請根據意見重新撰寫：
 
 修改意見：「${comments}」

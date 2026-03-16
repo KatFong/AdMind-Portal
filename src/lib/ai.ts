@@ -1,43 +1,15 @@
-import OpenAI from "openai";
+// Lazy AI client — OpenAI SDK is only loaded when chat() is first called,
+// not at module import time. This significantly reduces cold start time.
+import type OpenAI from "openai";
 
-// Supports OpenAI, Perplexity, DeepSeek, Groq, Azure — all OpenAI-compatible
-function createAIClient() {
-  const provider = process.env.AI_PROVIDER ?? "openai";
-
-  const configs: Record<string, { apiKey: string; baseURL?: string }> = {
-    openai: {
-      apiKey: process.env.OPENAI_API_KEY ?? "",
-    },
-    perplexity: {
-      apiKey: process.env.PERPLEXITY_API_KEY ?? "",
-      baseURL: "https://api.perplexity.ai",
-    },
-    deepseek: {
-      apiKey: process.env.DEEPSEEK_API_KEY ?? "",
-      baseURL: "https://api.deepseek.com/v1",
-    },
-    groq: {
-      apiKey: process.env.GROQ_API_KEY ?? "",
-      baseURL: "https://api.groq.com/openai/v1",
-    },
-    azure: {
-      apiKey: process.env.AZURE_OPENAI_API_KEY ?? "",
-      baseURL: process.env.AZURE_OPENAI_ENDPOINT ?? "",
-    },
-  };
-
-  const cfg = configs[provider] ?? configs.openai;
-  return new OpenAI(cfg);
-}
-
-const ai = createAIClient();
+let _client: OpenAI | null = null;
+let _model: string | null = null;
 
 function getModel(): string {
+  if (_model) return _model;
   const provider = process.env.AI_PROVIDER ?? "openai";
   const envModel = process.env.AI_MODEL;
-  if (envModel) return envModel;
-
-  // Sensible per-provider defaults
+  if (envModel) return (_model = envModel);
   const defaults: Record<string, string> = {
     openai: "gpt-4o-mini",
     perplexity: "llama-3.1-sonar-large-128k-online",
@@ -45,10 +17,24 @@ function getModel(): string {
     groq: "llama3-8b-8192",
     azure: "gpt-4o",
   };
-  return defaults[provider] ?? "gpt-4o-mini";
+  return (_model = defaults[provider] ?? "gpt-4o-mini");
 }
 
-const MODEL = getModel();
+async function getClient(): Promise<OpenAI> {
+  if (_client) return _client;
+  // Dynamic import — only loads openai SDK when actually needed
+  const { default: OpenAI } = await import("openai");
+  const provider = process.env.AI_PROVIDER ?? "openai";
+  const configs: Record<string, { apiKey: string; baseURL?: string }> = {
+    openai:      { apiKey: process.env.OPENAI_API_KEY ?? "" },
+    perplexity:  { apiKey: process.env.PERPLEXITY_API_KEY ?? "", baseURL: "https://api.perplexity.ai" },
+    deepseek:    { apiKey: process.env.DEEPSEEK_API_KEY ?? "",   baseURL: "https://api.deepseek.com/v1" },
+    groq:        { apiKey: process.env.GROQ_API_KEY ?? "",       baseURL: "https://api.groq.com/openai/v1" },
+    azure:       { apiKey: process.env.AZURE_OPENAI_API_KEY ?? "", baseURL: process.env.AZURE_OPENAI_ENDPOINT ?? "" },
+  };
+  _client = new OpenAI(configs[provider] ?? configs.openai);
+  return _client;
+}
 
 // ─── Core helper ─────────────────────────────────────────────────────────────
 
@@ -57,8 +43,9 @@ export async function chat(
   userPrompt: string,
   opts: { json?: boolean; maxTokens?: number } = {}
 ): Promise<string> {
+  const ai = await getClient();
   const response = await ai.chat.completions.create({
-    model: MODEL,
+    model: getModel(),
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -66,7 +53,6 @@ export async function chat(
     max_tokens: opts.maxTokens ?? 4096,
     response_format: opts.json ? { type: "json_object" } : undefined,
   });
-
   return response.choices[0]?.message?.content ?? "";
 }
 
@@ -179,4 +165,3 @@ Google Ads 文案視乎品牌語言設定。
 }
 只回傳有效 JSON，不要加任何 markdown。`;
 
-export { ai, MODEL };
