@@ -16,57 +16,47 @@ export default async function DashboardPage() {
   const userId = session.user.id;
   const isSuperAdmin = session.user.isSuperAdmin;
 
-  // Fetch brands for this user
+  // Fetch memberships first (need brand IDs for other queries)
   const memberships = await prisma.brandMembership.findMany({
     where: { userId },
     include: {
       brand: {
-        include: {
-          _count: {
-            select: {
-              posts: true,
-              strategies: true,
-            },
-          },
-        },
+        include: { _count: { select: { posts: true, strategies: true } } },
       },
     },
   });
 
   const brands = memberships.map((m) => ({ ...m.brand, userRole: m.role }));
+  const brandIds = brands.map((b) => b.id);
 
-  // Aggregate stats
-  const totalBrands = brands.length;
-
-  const postStats = await prisma.post.groupBy({
-    by: ["status"],
-    where: {
-      brandId: { in: brands.map((b) => b.id) },
-    },
-    _count: true,
-  });
+  // Run all remaining queries in parallel
+  const [postStats, recentLogs] = await Promise.all([
+    prisma.post.groupBy({
+      by: ["status"],
+      where: { brandId: { in: brandIds } },
+      _count: true,
+    }),
+    prisma.auditLog.findMany({
+      where: isSuperAdmin ? {} : { brandId: { in: brandIds } },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      include: {
+        brand: { select: { name: true } },
+        actor: { select: { name: true } },
+      },
+    }),
+  ]);
 
   const statsMap = Object.fromEntries(postStats.map((s) => [s.status, s._count]));
 
   const stats = [
-    { label: "Total Brands", value: totalBrands, icon: Building2, color: "text-indigo-600", bg: "bg-indigo-50" },
+    { label: "Total Brands", value: brands.length, icon: Building2, color: "text-indigo-600", bg: "bg-indigo-50" },
     { label: "Posts in Draft", value: (statsMap["DRAFT"] ?? 0) + (statsMap["PENDING_REVIEW"] ?? 0), icon: FileText, color: "text-amber-600", bg: "bg-amber-50" },
     { label: "Approved Posts", value: statsMap["APPROVED"] ?? 0, icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-50" },
     { label: "Scheduled", value: statsMap["SCHEDULED"] ?? 0, icon: Clock, color: "text-blue-600", bg: "bg-blue-50" },
     { label: "Published", value: (statsMap["PUBLISHED"] ?? 0) + (statsMap["SIMULATED_PUBLISHED"] ?? 0), icon: TrendingUp, color: "text-purple-600", bg: "bg-purple-50" },
     { label: "Needs Review", value: statsMap["PENDING_REVIEW"] ?? 0, icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50" },
   ];
-
-  // Recent audit logs
-  const recentLogs = await prisma.auditLog.findMany({
-    where: isSuperAdmin ? {} : { brandId: { in: brands.map((b) => b.id) } },
-    orderBy: { createdAt: "desc" },
-    take: 8,
-    include: {
-      brand: { select: { name: true } },
-      actor: { select: { name: true } },
-    },
-  });
 
   return (
     <div className="p-8 max-w-7xl mx-auto">

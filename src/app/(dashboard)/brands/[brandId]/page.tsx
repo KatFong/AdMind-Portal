@@ -23,7 +23,7 @@ export default async function BrandDetailPage({
   const session = await auth();
   if (!session?.user?.id) redirect("/login");
 
-  const [brand, role] = await Promise.all([
+  const [brand, role, postStats] = await Promise.all([
     prisma.brand.findUnique({
       where: { id: brandId },
       include: {
@@ -39,15 +39,11 @@ export default async function BrandDetailPage({
       },
     }),
     getUserBrandRole(session.user.id, brandId),
+    prisma.post.groupBy({ by: ["status"], where: { brandId }, _count: true }),
   ]);
 
   if (!brand || !role) notFound();
 
-  const postStats = await prisma.post.groupBy({
-    by: ["status"],
-    where: { brandId },
-    _count: true,
-  });
   const sm = Object.fromEntries(postStats.map((s) => [s.status, s._count]));
 
   const activeStrategy = brand.strategies[0];
