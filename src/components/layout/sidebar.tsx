@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
+import Image from "next/image";
 import {
-  Sparkles, LayoutDashboard, Building2, LogOut, Settings, ChevronRight,
+  LayoutDashboard, Building2, LogOut, Settings, ChevronRight,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -23,14 +24,17 @@ export function Sidebar({ brands }: SidebarProps) {
   return (
     <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full fixed left-0 top-0 bottom-0 z-30">
       {/* Logo */}
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-gray-100">
-        <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
-          <Sparkles className="h-4 w-4 text-white" />
-        </div>
-        <div>
-          <p className="font-bold text-gray-900 text-sm leading-tight">AdMind Portal</p>
-          <p className="text-xs text-gray-400">AI Marketing Platform</p>
-        </div>
+      <div className="flex items-center px-5 py-4 border-b border-gray-100">
+        <Link href="/dashboard">
+          <Image
+            src="/admind-logo.png"
+            alt="ad.mind"
+            width={110}
+            height={36}
+            className="object-contain"
+            priority
+          />
+        </Link>
       </div>
 
       {/* Nav */}

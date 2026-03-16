@@ -6,8 +6,9 @@ import { SessionProvider } from "next-auth/react";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "AI Marketing Portal | AdMind",
-  description: "Multi-brand AI-powered marketing strategy & content portal",
+  title: "ad.mind | AI Marketing Portal",
+  description: "Multi-brand AI-powered marketing strategy & content portal by ad.mind",
+  icons: { icon: "/admind-logo.png" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
