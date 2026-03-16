@@ -1,0 +1,340 @@
+// This is your Prisma schema file
+// Dev: SQLite | Prod: swap to postgresql + update DATABASE_URL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Auth
+// ─────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String?
+  image         String?
+  isSuperAdmin  Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts        Account[]
+  sessions        Session[]
+  brandMemberships BrandMembership[]
+  auditLogs        AuditLog[]
+  approvedPosts    Post[]            @relation("ApprovedBy")
+  createdPosts     Post[]            @relation("CreatedBy")
+  postReviews      PostReview[]
+  strategies       MarketingStrategy[]
+  notifications    NotificationLog[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─────────────────────────────────────────────
+// Brand & Membership
+// ─────────────────────────────────────────────
+
+model Brand {
+  id          String @id @default(cuid())
+  name        String
+  websiteUrl  String?
+  industry    String?
+  overview    String?
+
+  // Brand identity
+  keyDifferentiators String? // JSON array stored as string
+  targetAudience     String? // JSON object stored as string
+  mainProducts       String? // JSON array stored as string
+  toneOfVoice        String?
+  toneOfVoiceNotes   String?
+  language           String  @default("MIXED") // CANTONESE_TC | ENGLISH | MIXED
+
+  // Channels
+  usesFacebook   Boolean @default(false)
+  usesInstagram  Boolean @default(false)
+  usesGoogleAds  Boolean @default(false)
+
+  // Budget & frequency
+  monthlyBudget         Float?
+  postingFrequencyPerWeek Int   @default(2)
+
+  // Safety toggle — DRAFT_ONLY is the immutable default
+  publishingMode String @default("DRAFT_ONLY") // DRAFT_ONLY | REAL_ALLOWED
+
+  // Meta connection
+  metaConnected           Boolean @default(false)
+  metaPageId              String?
+  instagramBusinessId     String?
+  metaAccessTokenEncrypted String?
+
+  // Google Ads connection
+  googleAdsConnected          Boolean @default(false)
+  googleAdsCustomerId         String?
+  googleAdsRefreshTokenEncrypted String?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  memberships  BrandMembership[]
+  strategies   MarketingStrategy[]
+  posts        Post[]
+  auditLogs    AuditLog[]
+  publishLogs  PublishRecord[]
+  jobs         Job[]
+}
+
+model BrandMembership {
+  id      String @id @default(cuid())
+  userId  String
+  brandId String
+  role    String // ADMIN | BRAND_MANAGER | CREATOR
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, brandId])
+}
+
+// ─────────────────────────────────────────────
+// Marketing Strategy
+// ─────────────────────────────────────────────
+
+model MarketingStrategy {
+  id      String @id @default(cuid())
+  brandId String
+  version Int    @default(1)
+  title   String
+  isActive Boolean @default(true)
+
+  // AI-generated structured content stored as JSON string
+  targetAudience    String? // JSON
+  positioning       String?
+  valuePropositions String? // JSON array
+  contentPillars    String? // JSON array
+  channelMix        String? // JSON
+  kpis              String? // JSON
+  budgetSplit       String? // JSON
+  rawContent        String? // full AI response
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  brand Brand  @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  user  User?  @relation(fields: [createdByUserId], references: [id])
+  posts Post[]
+}
+
+// ─────────────────────────────────────────────
+// Content / Posts
+// ─────────────────────────────────────────────
+
+model Post {
+  id         String   @id @default(cuid())
+  brandId    String
+  strategyId String?
+  
+  // Calendar slot
+  weekNumber     Int?
+  dayOfWeek      Int?     // 0=Sun, 1=Mon, ...6=Sat
+  scheduledTime  DateTime?
+  
+  // Platforms (comma-separated: FACEBOOK,INSTAGRAM,GOOGLE_ADS)
+  platforms String @default("FACEBOOK,INSTAGRAM")
+
+  // Current selected content
+  captionFacebook   String?
+  captionInstagram  String?
+  imagePrompts      String? // JSON array
+  googleAdsAssets   String? // JSON: {headlines[], descriptions[], path1, path2}
+  theme             String?
+  contentPillar     String?
+
+  // Workflow status
+  status String @default("DRAFT")
+  // DRAFT | PENDING_REVIEW | APPROVED | REJECTED | SCHEDULED
+  // PUBLISHED | SIMULATED_PUBLISHED | CANCELLED
+
+  // Approval
+  approvedByUserId String?
+  approvedAt       DateTime?
+  rejectedReason   String?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  brand    Brand              @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  strategy MarketingStrategy? @relation(fields: [strategyId], references: [id])
+  approver User?              @relation("ApprovedBy", fields: [approvedByUserId], references: [id])
+  creator  User?              @relation("CreatedBy", fields: [createdByUserId], references: [id])
+
+  variations   PostVariation[]
+  reviews      PostReview[]
+  publishLogs  PublishRecord[]
+}
+
+model PostVariation {
+  id     String @id @default(cuid())
+  postId String
+  label  String @default("v1") // v1, v2, ...
+
+  captionFacebook  String?
+  captionInstagram String?
+  imagePrompts     String? // JSON array
+  googleAdsAssets  String? // JSON
+
+  status   String  @default("CANDIDATE") // CANDIDATE | SELECTED | REJECTED
+  feedback String?
+
+  createdByUserId String? // null = AI-generated
+  createdAt       DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+}
+
+model PostReview {
+  id         String @id @default(cuid())
+  postId     String
+  reviewerId String
+  action     String // APPROVE | REJECT
+  comments   String?
+  createdAt  DateTime @default(now())
+
+  post     Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  reviewer User @relation(fields: [reviewerId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// Publishing
+// ─────────────────────────────────────────────
+
+model PublishRecord {
+  id       String @id @default(cuid())
+  postId   String
+  brandId  String
+  platform String // FACEBOOK | INSTAGRAM | GOOGLE_ADS
+
+  mode String @default("SIMULATED") // SIMULATED | REAL
+
+  payloadSnapshot String? // JSON snapshot of what was / would be sent
+  externalId      String? // FB post id / Google ad id; null for simulated
+  status          String  @default("SUCCESS") // SUCCESS | FAILED
+  errorMessage    String?
+
+  createdAt DateTime @default(now())
+
+  post  Post  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────
+// Audit
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id          String  @id @default(cuid())
+  brandId     String?
+  actorUserId String?
+  actionType  String
+  // BRAND_CREATED | POST_GENERATED | POST_APPROVED | POST_REJECTED
+  // PUBLISH_SIMULATED | PUBLISH_REAL_ATTEMPT | PUBLISH_MODE_CHANGED
+  // STRATEGY_GENERATED | MEMBER_ADDED | MEMBER_REMOVED | CREDENTIALS_UPDATED
+  metadata    String? // JSON
+  createdAt   DateTime @default(now())
+
+  brand Brand? @relation(fields: [brandId], references: [id])
+  actor User?  @relation(fields: [actorUserId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// Background Jobs
+// ─────────────────────────────────────────────
+
+model Job {
+  id      String @id @default(cuid())
+  brandId String
+  type    String // GENERATE_STRATEGY | GENERATE_CONTENT
+
+  status   String @default("PENDING")
+  // PENDING | RUNNING | DONE | FAILED
+
+  // Progress stages stored as JSON string
+  // e.g. [{"step":"搜尋競爭對手","status":"done"},{"step":"生成策略","status":"running"}]
+  steps    String?
+
+  progressPct Int @default(0) // 0-100
+  currentStep String? // human-readable current action
+
+  resultId    String? // strategyId or count of posts created
+  errorMessage String?
+
+  triggeredByUserId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  brand Brand @relation(fields: [brandId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────
+// Notifications
+// ─────────────────────────────────────────────
+
+model NotificationLog {
+  id      String @id @default(cuid())
+  userId  String
+  brandId String?
+  type    String // EMAIL | SLACK
+  event   String // NEW_REVIEW_ITEM | POST_APPROVED | POST_REJECTED | SCHEDULE_CONFIRMED
+  payload String? // JSON
+  status  String  @default("PENDING") // PENDING | SENT | FAILED
+  sentAt  DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
