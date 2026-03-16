@@ -51,6 +51,7 @@ async function scrapeWebsite(url: string): Promise<{ raw: string; quick: QuickEx
 }
 
 interface QuickExtract {
+  name: string | null;
   industry: string | null;
   overview: string | null;
   keyDifferentiators: string[];
@@ -61,6 +62,12 @@ interface QuickExtract {
 }
 
 function extractWithoutAI($: ReturnType<typeof cheerio.load>, url: string): QuickExtract {
+  // Brand name: og:site_name > title (strip tagline) > domain
+  const ogSiteName = $('meta[property="og:site_name"]').attr("content")?.trim();
+  const titleTag = $("title").text().trim().split(/[|\-–—]/)[0].trim();
+  const domainName = new URL(url).hostname.replace(/^www\./, "").split(".")[0];
+  const name = ogSiteName || (titleTag.length < 50 ? titleTag : null) || domainName || null;
+
   // Overview: meta description or OG description
   const overview =
     $('meta[property="og:description"]').attr("content") ||
@@ -97,6 +104,7 @@ function extractWithoutAI($: ReturnType<typeof cheerio.load>, url: string): Quic
   const toneOfVoice = hasExclamation ? "energetic, enthusiastic" : "professional";
 
   return {
+    name,
     industry: null,
     overview: overview ? overview.slice(0, 400) : null,
     keyDifferentiators: [],
@@ -155,6 +163,7 @@ export async function POST(req: NextRequest) {
 
       // Merge AI results with quick fallback
       const merged = {
+        name: aiData.brandName ?? aiData.name ?? scraped.quick.name,
         industry: aiData.industry ?? scraped.quick.industry,
         overview: aiData.overview ?? scraped.quick.overview,
         keyDifferentiators: aiData.keyDifferentiators?.length
@@ -198,7 +207,7 @@ export async function POST(req: NextRequest) {
       partial: true,
       message: isAIConfigured()
         ? "AI extraction failed — basic info pre-filled from meta tags. Please review and complete manually."
-        : "No AI provider configured — basic info pre-filled from meta tags. Add an API key in .env to enable full AI extraction.",
+        : "DeepSeek API 未設定 — 已從網站 Meta 標籤提取基本資訊，請手動補充剩餘欄位。",
       data: scraped.quick,
     });
   }

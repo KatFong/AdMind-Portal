@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Sidebar } from "@/components/layout/sidebar";
+import { Suspense } from "react";
+import { NavProgressTrigger } from "@/components/ui/nav-progress";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -17,6 +19,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex h-screen overflow-hidden">
+      <Suspense fallback={null}>
+        <NavProgressTrigger />
+      </Suspense>
       <Sidebar brands={brandList} />
       <main className="flex-1 ml-64 overflow-y-auto bg-gray-50">
         {children}

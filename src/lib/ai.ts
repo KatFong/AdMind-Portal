@@ -75,6 +75,7 @@ export const SCRAPE_SYSTEM_PROMPT = `你是一位品牌分析師助手。
 你會收到從公司網站爬取的 HTML 或純文字內容。
 請提取並以繁體中文回傳以下 JSON 格式（如找不到則填 null）：
 {
+  "brandName": "品牌／公司正式名稱",
   "industry": "行業類別（繁體中文）",
   "overview": "品牌簡介（繁體中文，2-4句）",
   "keyDifferentiators": ["差異化優勢1", "差異化優勢2", ...],
